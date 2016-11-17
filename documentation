@@ -1,0 +1,15 @@
+#!/usr/bin/env python
+
+count_subdirs=`find . -type d --maxdepth 1| grep -v "tests"|wc -l|awk {'print $1'}`
+count_main_headers=`grep -ie "^### " README.md|wc -l|awk {'print $1'}`
+count_manifests=`find . -type f -name "*.pp" |grep -v "tests"|wc -l|awk {'print $1'}`
+
+if test $count_manifests -eq $count_headers
+  then printf "Documentation matches number of manifests.\n"
+  exit 0
+else
+  printf "Documentation does not match number of manifests.\n"
+  printf "There might be missing manifests or missing documentation entries.\n"
+  printf "Manifests: $count_manifests, h3 documentation sections: $count_headers\n"
+  exit 1
+fi

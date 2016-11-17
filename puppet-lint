@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+puppet-lint . \
+--fail-on-warnings \
+--no-arrow_alignment-check \
