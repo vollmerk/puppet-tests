@@ -2,7 +2,8 @@
 # vim: set softtabstop=2 ts=2 sw=2 expandtab:
 """Test puppet sourced files and templates for existence."""
 
-import os.path,re
+import os.path
+import re
 import subprocess
 import sys
 
@@ -13,20 +14,27 @@ def main():
     manifests = get_manifests()
     paths = get_paths(manifests)
     check_paths(paths)
-def check_paths(paths):
 
+
+def check_paths(paths):
     retval = 0
+    count = 0
+    missing = 0
     """Check the set of paths for existence (or symlinked existence)."""
     for path in paths:
+        count += 1
         if not os.path.exists(path) and not os.path.islink(path):
             print "%s does not exist." % format(path)
+            missing += 1
             retval = 1
-    
+
     if retval == 1:
-      sys.exit('Files missing - Fatal Error')
+        sys.exit('Fatal Error - %s Files identified, %s missing.' %
+                 (count, missing))
     else:
-      print 'No missing files - test PASSED'
-      sys.exit(0)
+        print 'Test PASSED - %s files identified, none missing.' % count
+        sys.exit(0)
+
 
 def get_manifests():
     """Find all .pp files in the current working directory and subfolders."""
@@ -39,11 +47,13 @@ def get_manifests():
     except subprocess.CalledProcessError, error:
         sys.exit(1, error)
 
+
 def get_paths(manifests):
     """Extract and construct paths to check."""
 
     paths = set()
 
+    # search for FILE includes
     for line in manifests:
         try:
             results = subprocess.check_output(["grep", "puppet:\/", line])
@@ -52,72 +62,113 @@ def get_paths(manifests):
             for hit in hits:
                 working_copy = hit.strip()
                 # Exclude files with variables and things that aren't files
-                if re.search('\${?',working_copy):
-                  continue
-                if re.search('<%=',working_copy):
-                  continue
-                if re.search('class puppet',working_copy):
-                  continue
+                if re.search('\${?', working_copy):
+                    continue
+                if re.search('<%=', working_copy):
+                    continue
+                if re.search('class puppet', working_copy):
+                    continue
                 quotesplit = re.compile("puppet://(.*)['\"]")
                 working_copy = quotesplit.split(working_copy)
                 if len(working_copy) > 1:
-                  working_copy = working_copy[1]
+                    working_copy = working_copy[1]
                 else:
-                  working_copy = working_copy[0]
+                    working_copy = working_copy[0]
                 working_copy = working_copy.replace("puppet://", ".")
 
                 segments = working_copy.split("/", 3)
                 del segments[1]
 
-                # If this is just a module by itself, we need to delete differently
-                if len(sys.argv) == 1:
-                  segments.insert(2, 'files')
-                else:
-                  if sys.argv[1] == 'module':
+                # if Module
+                if os.path.isfile('metadata.json'):
                     del segments[1]
-                    segments.insert(1,'files')
-                  else:
+                    segments.insert(1, 'files')
+                # if control repo
+                elif os.path.isfile('Puppetfile'):
+                    segments.insert(1, 'site')
+                    segments.insert(3, 'files')
+                # default
+                else:
                     segments.insert(2, 'files')
-                
 
                 path = "/".join(segments)
-                paths.add('.'+path)
+                paths.add('.' + path)
 
         # we don't care if grep does not find any matches in a file
         except subprocess.CalledProcessError:
             pass
 
+        # search for TEMPLATE includes
         try:
             results = subprocess.check_output(["grep", "template(", line])
             hits = results.splitlines()
 
             for hit in hits:
                 working_copy = hit.strip()
-                if re.search('\${?',working_copy):
-                  continue
-                if re.search('<%=',working_copy):
-                  continue
+                if re.search('\${?', working_copy):
+                    continue
+                if re.search('<%=', working_copy):
+                    continue
                 quotesplit = re.compile("[\"']")
                 working_copy = quotesplit.split(working_copy)
                 if len(working_copy) > 1:
-                  working_copy = working_copy[1]
+                    working_copy = working_copy[1]
                 else:
-                  working_copy = working_copy[0]
+                    working_copy = working_copy[0]
                 segments = working_copy.split("/", 1)
-                
-                # If it's a solo module this needs to be handled differently
-                if len(sys.argv) == 1:
-                  segments.insert(0, ".")
-                  segments.insert(2, "templates")
-                else:
-                  if sys.argv[1] == 'module':
+
+                # if Module
+                if os.path.isfile('metadata.json'):
                     del segments[0]
-                    segments.insert(0, ".")
                     segments.insert(0, "templates")
-                  else:
+                # if control repo
+                elif os.path.isfile('Puppetfile'):
+                    segments.insert(0, 'site')
+                    segments.insert(2, 'templates')
+                # else
+                else:
                     segments.insert(0, ".")
                     segments.insert(2, "templates")
-                
+
+                path = "/".join(segments)
+                paths.add(path)
+
+        # we don't care if grep does not find any matches in a file
+        except subprocess.CalledProcessError:
+            pass
+
+        # search for EPP includes
+        try:
+            results = subprocess.check_output(["grep", "epp(", line])
+            hits = results.splitlines()
+
+            for hit in hits:
+                working_copy = hit.strip()
+                if re.search('\${?', working_copy):
+                    continue
+                if re.search('<%=', working_copy):
+                    continue
+                quotesplit = re.compile("[\"']")
+                working_copy = quotesplit.split(working_copy)
+                if len(working_copy) > 1:
+                    working_copy = working_copy[1]
+                else:
+                    working_copy = working_copy[0]
+                segments = working_copy.split("/", 1)
+
+                # if Module
+                if os.path.isfile('metadata.json'):
+                    del segments[0]
+                    segments.insert(0, "templates")
+                # if control repo
+                elif os.path.isfile('Puppetfile'):
+                    segments.insert(0, 'site')
+                    segments.insert(2, 'templates')
+                # else
+                else:
+                    segments.insert(0, ".")
+                    segments.insert(2, "templates")
+
                 path = "/".join(segments)
                 paths.add(path)
 
@@ -127,5 +178,6 @@ def get_paths(manifests):
 
     return paths
 
+
 if __name__ == "__main__":
-  main()
+    main()
